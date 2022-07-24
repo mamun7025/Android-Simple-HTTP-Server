@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Android HTTP Server</string>
+    <string name="my_shared_data">my_shared_data</string>
 </resources>

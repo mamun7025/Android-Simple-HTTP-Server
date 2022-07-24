@@ -1,12 +1,16 @@
 package com.example.myhello3app;
 
 import androidx.appcompat.app.AppCompatActivity;
+import android.content.Context;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -148,12 +152,52 @@ public class MainActivity extends AppCompatActivity {
             String request;
 
             try {
+                // Get input and output streams
+//                BufferedReader in = new BufferedReader( new InputStreamReader( socket.getInputStream() ) );
+//                PrintWriter out = new PrintWriter( socket.getOutputStream() );
+                // ---------------------------------------------------------------------------------
                 brIs = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                request = brIs.readLine();
-                Map<String, String> qParamsMap = getQueryParamsFromGetRequest(request);
+                //code to read and print headers
+                // read request
+                String req1stLine = brIs.readLine();
+                boolean isPost = req1stLine.startsWith("POST");
+                String headerLine;
+                while((headerLine = brIs.readLine()).length() != 0){
+                    System.out.println("HTTP-HEADER: " + headerLine);
+                }
+                // process GET / POST params
+                Map<String, String> qParamsMap = new HashMap<>();
+                String postBody = "";
+                if(isPost){
+                    postBody = readPostBodyData(brIs);
+                    qParamsMap = getQueryParamsFromGetRequest(req1stLine);
+                } else {
+                    qParamsMap = getQueryParamsFromGetRequest(req1stLine);
+                }
+                // ---------------------------------------------------------------------------------
+
                 if(qParamsMap.containsKey("q")){
                     replyText = qParamsMap.get("q");
                 }
+                if(qParamsMap.containsKey("dl")){
+                    storeDeviceListData(postBody);
+                }
+                if(qParamsMap.containsKey("dd")){
+                    storeDeviceReadingData(qParamsMap.get("dd"), qParamsMap.get("dn"));
+                }
+                String deviceReadingData = "";
+                // app?d=deviceName
+                if(qParamsMap.containsKey("d")){
+                    deviceReadingData = displayDeviceReadingData(qParamsMap.get("d"));
+                    replyText = deviceReadingData;
+                }
+                String deviceList = "";
+                // app?d=deviceName
+                if(qParamsMap.containsKey("l")){
+                    deviceList = displayDeviceList();
+                    replyText = deviceList;
+                }
+
                 os = new PrintWriter(socket.getOutputStream(), true);
                 String response =
                                 "<html>" +
@@ -162,7 +206,10 @@ public class MainActivity extends AppCompatActivity {
                                     "<body>" +
                                         "<h1>Response from server</h1>" +
                                         "<br>" +
-                                        "<h1>" + replyText + "</h1>" +
+                                        "<br>" +
+                                        "<h1>Device List:<h1>" +
+                                        "<br>" +
+                                        "<div>" + replyText + "</div>" +
                                     "</body>" +
                                 "</html>";
 
@@ -174,7 +221,7 @@ public class MainActivity extends AppCompatActivity {
                 os.flush();
                 socket.close();
 
-                msgLog += "Request of " + request
+                msgLog += "Request of " + req1stLine
                         + " from " + socket.getInetAddress().toString() + "\n";
                 MainActivity.this.runOnUiThread(new Runnable() {
                     @Override
@@ -204,11 +251,178 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             }
-            System.out.println("@qParamsMap: ");
+            System.out.println("@qParamsMap====>");
             System.out.println(qParamsMap);
             return qParamsMap;
         }
 
+        public String readPostBodyData(BufferedReader brIs) throws IOException {
+            //code to read the post payload data
+            StringBuilder payload = new StringBuilder();
+            while(brIs.ready()){
+                payload.append((char) brIs.read());
+            }
+            System.out.println("Payload data is: "+ payload);
+            return payload.toString();
+        }
+
+    }
+
+
+
+    // Others Method *******************************************************************************
+    public void storeDeviceListData(String deviceListData) {
+        FileOutputStream fos = null;
+        try {
+//            File tempBlueDir= getDir("TempBlue", Context.MODE_APPEND);
+            File tempBlueDir= getDir("TempBlue", Context.MODE_PRIVATE);
+            if (!tempBlueDir.exists()){
+                tempBlueDir.mkdirs();
+            }
+            File fileWithinMyDir = new File(tempBlueDir, "dl.txt");
+            String fileFullPath = fileWithinMyDir.getAbsolutePath();
+            fos = new FileOutputStream(fileWithinMyDir);    //Use the stream as usual to write into the file.
+            fos.write(deviceListData.getBytes());
+            System.out.println("Saved to @fileFullPath " + fileFullPath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (fos != null) {
+                try {
+                    fos.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    public void storeDeviceReadingData(String deviceReadingData, String deviceName) {
+        String saveFileName = deviceName + "_dd.txt";
+        FileOutputStream fos = null;
+        try {
+//            fos = mContext.openFileOutput(FILE_NAME, MODE_PRIVATE);
+//            fos = mContext.openFileOutput(FILE_NAME, MODE_APPEND);
+            File tempBlueDir= getDir("TempBlue", Context.MODE_APPEND);
+            if (!tempBlueDir.exists()){
+                tempBlueDir.mkdirs();
+            }
+            File fileWithinMyDir = new File(tempBlueDir, saveFileName);
+            String fileFullPath = fileWithinMyDir.getAbsolutePath();
+            fos = new FileOutputStream(fileWithinMyDir);    //Use the stream as usual to write into the file.
+            fos.write(deviceReadingData.getBytes());
+            System.out.println("Saved to @fileFullPath " + fileFullPath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (fos != null) {
+                try {
+                    fos.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    public String displayDeviceReadingData(String deviceName){
+        String loadFileName = deviceName + "_dd.txt";
+        File tempBlueDir= getDir("TempBlue", Context.MODE_APPEND);
+        FileInputStream fis = null;
+        StringBuilder sb = null;
+        try {
+//            File fileBlue = new File(tempBlueDir, "dd.txt");
+            File fileBlue = new File(tempBlueDir, loadFileName);
+            System.out.println(fileBlue.getAbsolutePath());
+
+            fis = new FileInputStream(fileBlue);
+            InputStreamReader isr = new InputStreamReader(fis);
+            BufferedReader br = new BufferedReader(isr);
+            sb = new StringBuilder();
+            String text;
+            while ((text = br.readLine()) != null) {
+                sb.append(text).append("\n");
+            }
+            System.out.println("Load Data: " + sb);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        if(sb == null) return "";
+        return sb.toString();
+    }
+
+    public String displayDeviceList(){
+        File tempBlueDir= getDir("TempBlue", Context.MODE_APPEND);
+        FileInputStream fis = null;
+        StringBuilder sb = null;
+        try {
+            File fileBlue = new File(tempBlueDir, "dl.txt");
+            System.out.println(fileBlue.getAbsolutePath());
+
+            fis = new FileInputStream(fileBlue);
+            InputStreamReader isr = new InputStreamReader(fis);
+            BufferedReader br = new BufferedReader(isr);
+            sb = new StringBuilder();
+            String text;
+            while ((text = br.readLine()) != null) {
+                sb.append(text).append("\n");
+            }
+            System.out.println("Load Data: " + sb);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        if(sb == null) return "";
+        return sb.toString();
+    }
+
+
+
+    private String loadTempBlueDeviceReadingData(String deviceName){
+        File tempBlueDir= getDir("TempBlue", Context.MODE_APPEND);
+        FileInputStream fis = null;
+        StringBuilder sb = null;
+        try {
+            File fileBlue = new File(tempBlueDir, "dd.txt");
+            System.out.println(fileBlue.getAbsolutePath());
+
+            fis = new FileInputStream(fileBlue);
+            InputStreamReader isr = new InputStreamReader(fis);
+            BufferedReader br = new BufferedReader(isr);
+            sb = new StringBuilder();
+            String text;
+            while ((text = br.readLine()) != null) {
+                sb.append(text).append("\n");
+            }
+            System.out.println("Load Data: " + sb);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        if(sb == null) return "";
+        return sb.toString();
     }
 
 
